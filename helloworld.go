@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"strconv"
 
+	"fmt"
 )
 
 
@@ -28,11 +29,29 @@ func GetRandomString(l int) string{
 
 //红包结构
 type Packet struct{
+	Pid int
 	Uid int
 	Message string
 	Type int
 	Count int
 	Money float64
+	Pass string
+}
+
+//红包领取信息结构
+type Got struct{
+	Uid int
+	Pid int
+	Money float64
+	Subtype int
+}
+
+//读取红包数据
+func (p *Packet) GetPacket() (packet Packet, err error) {
+	err = db.QueryRow("SELECT pid,money,count FROM packet WHERE pid=? and pass=?", p.Pid,p.Pass).Scan(
+		&packet.Pid, &packet.Money, &packet.Count,
+	)
+	return
 }
 
 //写入红包数据表，产出id + pass
@@ -45,6 +64,41 @@ func (p *Packet) Create()(id int64,pass string,err error){
 		log.Fatalln(err)
 	}
 	id, err = rs.LastInsertId()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return
+}
+
+//红包信息更新
+func (p *Packet) ModPacket() (ra int64, err error) {
+
+	fmt.Println(p.Money);
+	fmt.Println(p.Pid)
+
+	rs, err := db.Exec("UPDATE packet SET money=money-?,gotmoney=gotmoney+?,`count`=`count`-1,gotcount=gotcount+1 WHERE pid=?",p.Money , p.Money , p.Pid)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+	ra, err = rs.RowsAffected()
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+	return
+}
+
+
+//写入抢红包数据表
+func (g *Got) Create()(id int64,err error){
+
+	rs, err :=db.Exec("INSERT INTO got(uid,pid,money,subtype,createtime) VALUE (?,?,?,?,?)",
+		g.Uid,g.Pid,g.Money,g.Subtype,time.Now().Unix())
+	if err != nil{
+		log.Fatalln(err)
+	}
+	id, err = rs.RowsAffected()
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -123,7 +177,7 @@ func main() {
 	//路由组
 	authorize := router.Group("/", JWTAuth())
 	{
-		//展示当前登录用户
+		//展示当前登录用户信息
 		authorize.GET("myprofile", func(c *gin.Context) {
 			claims := c.MustGet("claims").(*CustomClaims)
 			//fmt.Println(claims.ID)
@@ -133,8 +187,6 @@ func main() {
 		//发红包
 		authorize.POST("createPacket", func(c *gin.Context) {
 			claims := c.MustGet("claims").(*CustomClaims)
-			//fmt.Println(claims.ID)
-			//c.String(http.StatusOK, claims.Name)
 
 			var err error
 
@@ -179,6 +231,90 @@ func main() {
 			}
 
 		})
+
+		//抢红包
+		authorize.POST("withdrawPacket", func(c *gin.Context) {
+			claims := c.MustGet("claims").(*CustomClaims)
+			Uid := claims.ID
+
+			Pid,err := strconv.Atoi(c.Request.FormValue("pid"))
+			Pass := c.Request.FormValue("pass")
+
+
+			if err!=nil{
+				c.String(http.StatusOK,err.Error())
+				return
+			}
+
+			packet := Packet{
+				Pid:Pid,
+				Pass:Pass,
+			}
+
+			gprs,err := packet.GetPacket() //红包表查信息
+			if err!=nil{
+				c.JSON(200,gin.H{
+					"errmsg":"红包不存在的",
+				})
+				return
+			}
+
+			if gprs.Count>0{
+				//有红包
+
+				Money := gprs.Money/2 //临时抢到的红包金额
+
+				got := Got{
+					Pid: Pid,
+					Uid: Uid,
+					Money: Money,
+					Subtype: 1,
+				}
+				cgrs,err := got.Create() //红包领取表更新
+
+				if err!=nil{
+					c.String(http.StatusOK,err.Error())
+					return
+				}
+
+				if cgrs >0 {
+
+					packet = Packet{
+						Pid:Pid,
+						Money:Money,
+					}
+
+					mprs,err := packet.ModPacket() //红包表更新
+					if err!=nil{
+						c.String(http.StatusOK,err.Error())
+						return
+					}
+					if(mprs>0){
+						c.JSON(200,gin.H{
+							"return":"success",
+						})
+					}
+
+				}else{
+					c.JSON(200,gin.H{
+						"errmsg":"更新红包表异常!",
+					})
+				}
+
+			}else{
+				//无红包
+
+				c.JSON(200,gin.H{
+					"errmsg":"红包不存在或已抢完",
+				})
+
+			}
+
+
+
+		})
+
+		//提现
 
 	}
 
