@@ -10,7 +10,7 @@ import (
 	"time"
 	"math/rand"
 	"strconv"
-	"fmt"
+
 )
 
 
@@ -96,8 +96,7 @@ func main() {
 			c.String(http.StatusOK, err.Error())
 			c.Abort()
 		}
-		c.String(http.StatusOK, token+"---------------<br>")
-
+		//c.String(http.StatusOK, token+"---------------<br>")
 		res, err := j.ParseToken(token)
 		if err != nil {
 			if err == TokenExpired {
@@ -105,7 +104,9 @@ func main() {
 				if err != nil {
 					c.String(http.StatusOK, err.Error())
 				} else {
-					c.String(http.StatusOK, newToken)
+					c.JSON(http.StatusOK, gin.H{
+						"token":newToken,
+					})
 				}
 			} else {
 				c.String(http.StatusOK, err.Error())
@@ -125,8 +126,8 @@ func main() {
 		//展示当前登录用户
 		authorize.GET("myprofile", func(c *gin.Context) {
 			claims := c.MustGet("claims").(*CustomClaims)
-			fmt.Println(claims.ID)
-			c.String(http.StatusOK, claims.Name)
+			//fmt.Println(claims.ID)
+			c.JSON(http.StatusOK, claims)
 		})
 
 		//发红包
