@@ -10,7 +10,6 @@ import (
 	"time"
 	"math/rand"
 	"strconv"
-
 	"fmt"
 )
 
@@ -109,17 +108,9 @@ func (g *Got) Create()(id int64,err error){
 var db *sql.DB
 
 func main() {
-	var err error
-	db, err = sql.Open("mysql", "gncs:T04*1CuPfVSUa8@tcp(holarholar.mysql.rds.aliyuncs.com:3200)/gncs?parseTime=true")
-	db.SetMaxOpenConns(20)
-	db.SetMaxIdleConns(20)
-	if err != nil {
-		log.Fatalln(err)
-	}
+
+	db = setDb() //设置数据
 	defer db.Close()
-	if err := db.Ping(); err != nil {
-		log.Fatalln(err)
-	}
 
 	router := gin.Default()
 
